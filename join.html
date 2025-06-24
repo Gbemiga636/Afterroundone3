@@ -1,0 +1,271 @@
+<!-- Save this as join.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Join Room – AfterRoundOne</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;700&family=Luckiest+Guy&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Fredoka', sans-serif;
+      background: linear-gradient(to right, #FFFDE7, #E0F2F1);
+      padding: 30px;
+      text-align: center;
+      transition: opacity 0.8s ease;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: auto;
+      padding: 30px;
+      background: rgba(255,255,255,0.2);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    }
+
+    h1 {
+      font-family: 'Luckiest Guy', cursive;
+      color: #4CAF50;
+      margin-bottom: 10px;
+      font-size: 2.5rem;
+      text-shadow: 2px 2px #8D6E63;
+    }
+
+    input {
+      padding: 12px;
+      width: 100%;
+      margin: 10px 0;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 1rem;
+    }
+
+    .number-select {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin: 20px 0;
+    }
+
+    .num-btn {
+      padding: 15px;
+      border-radius: 50%;
+      border: none;
+      background: #8D6E63;
+      color: #fff;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .num-btn:hover,
+    .num-btn.selected {
+      background: #4CAF50;
+      transform: scale(1.1);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    .num-btn.disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #4CAF50;
+      color: white;
+      font-weight: bold;
+      font-size: 1rem;
+      border: none;
+      border-radius: 8px;
+      margin-top: 10px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+
+    button:hover {
+      background: #388E3C;
+    }
+
+    .footer {
+      margin-top: 40px;
+      font-size: 0.9rem;
+      color: #777;
+    }
+
+    #loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(6px);
+      z-index: 9999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .spinner {
+      border: 6px solid #f3f3f3;
+      border-top: 6px solid #4CAF50;
+      border-radius: 50%;
+      width: 60px;
+      height: 60px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Join Game Room</h1>
+
+  <input type="text" id="player-name" placeholder="Your Name" />
+  <input type="text" id="room-code-input" placeholder="Enter Room Code" maxlength="6" style="text-transform: uppercase;" />
+
+  <div class="number-select" id="number-buttons">
+    <!-- Buttons will be inserted via JS -->
+  </div>
+
+  <button onclick="joinRoom()">Join Room</button>
+</div>
+
+<div class="footer">
+© 2025 AfterRoundOne — Built for mischief, powered by GJDESIGNHUB 🎉
+</div>
+
+<div id="loader"><div class="spinner"></div></div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyD5cQq8BXdPtUsmt8-CMy9zteUD_nofAew",
+    authDomain: "afterroundone-bd680.firebaseapp.com",
+    projectId: "afterroundone-bd680",
+    storageBucket: "afterroundone-bd680.appspot.com",
+    messagingSenderId: "217648545359",
+    appId: "1:217648545359:web:0432b2b4df8c065982743a"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let selectedNumber = null;
+  const buttons = [];
+
+  function showLoader(show) {
+    document.getElementById("loader").style.display = show ? "flex" : "none";
+  }
+
+  function renderNumberButtons() {
+    const container = document.getElementById("number-buttons");
+    container.innerHTML = "";
+    for (let i = 1; i <= 10; i++) {
+      const btn = document.createElement("button");
+      btn.textContent = i;
+      btn.className = "num-btn";
+      btn.onclick = () => {
+        if (btn.classList.contains("disabled")) return;
+        buttons.forEach(b => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        selectedNumber = i;
+      };
+      buttons.push(btn);
+      container.appendChild(btn);
+    }
+  }
+
+  document.getElementById("room-code-input").addEventListener("input", async (e) => {
+    const code = e.target.value.trim().toUpperCase();
+    if (code.length === 6) {
+      const roomRef = db.collection("rooms").doc(code);
+      roomRef.collection("players").onSnapshot(snapshot => {
+        const taken = [];
+        snapshot.forEach(doc => {
+          const d = doc.data();
+          if (d.number) taken.push(d.number);
+        });
+        buttons.forEach((btn, i) => {
+          const num = i + 1;
+          if (taken.includes(num)) {
+            btn.classList.add("disabled");
+            btn.disabled = true;
+          } else {
+            btn.classList.remove("disabled");
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+  });
+
+  async function joinRoom() {
+    const rawName = document.getElementById("player-name").value.trim();
+    const name = rawName.toLowerCase();
+    const roomCode = document.getElementById("room-code-input").value.trim().toUpperCase();
+
+    if (!name || !roomCode || !selectedNumber) {
+      alert("Please fill all fields and pick a number.");
+      return;
+    }
+
+    const roomRef = db.collection("rooms").doc(roomCode);
+    const doc = await roomRef.get();
+    if (!doc.exists) {
+      alert("Room not found!");
+      return;
+    }
+
+    const playersRef = roomRef.collection("players");
+    const snapshot = await playersRef.get();
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      if (data.number === selectedNumber) {
+        alert("Number already taken.");
+        return;
+      }
+      if (data.name.toLowerCase() === name) {
+        alert("Name already taken.");
+        return;
+      }
+    }
+
+    showLoader(true);
+    await playersRef.doc(name).set({
+      name,
+      number: selectedNumber,
+      status: "alive",
+      isHost: false,
+      joinedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    localStorage.setItem("playerName", name);
+    localStorage.setItem("playerNumber", selectedNumber);
+    localStorage.setItem("roomCode", roomCode);
+
+    document.body.style.opacity = '0';
+    setTimeout(() => {
+      location.href = "lobby.html";
+    }, 800);
+  }
+
+  renderNumberButtons();
+</script>
+
+</body>
+</html>

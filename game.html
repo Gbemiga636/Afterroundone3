@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AfterRoundOne – Game</title>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;700&family=Luckiest+Guy&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Fredoka', sans-serif;
+      background: linear-gradient(to right, #E0F7FA, #FFF9C4);
+      text-align: center;
+    }
+    h1 {
+      font-family: 'Luckiest Guy', cursive;
+      font-size: 2.4rem;
+      color: #388E3C;
+      margin-top: 20px;
+      text-shadow: 1px 1px #8D6E63;
+    }
+    #game-container {
+      position: relative;
+      width: 100%;
+      height: 420px;
+      margin-top: 20px;
+    }
+    .player-avatar {
+      position: absolute;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: #4CAF50;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+    .stored-number, .chosen-number {
+      margin-top: 4px;
+      font-size: 0.9rem;
+      font-weight: bold;
+      background: rgba(0,0,0,0.2);
+      padding: 3px 6px;
+      border-radius: 8px;
+    }
+    .chosen-number {
+      background: rgba(255,255,255,0.8);
+      color: #000;
+    }
+    .info-box {
+      margin: 20px auto;
+      max-width: 320px;
+      padding: 20px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .number-select {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .num-btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 10px;
+      background: #8D6E63;
+      color: white;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .num-btn.active {
+      background: #4CAF50;
+      transform: scale(1.1);
+    }
+    .num-btn:disabled {
+      background: #bbb;
+      cursor: not-allowed;
+    }
+    #start-round-btn {
+      margin-top: 20px;
+      padding: 12px 20px;
+      background: #4CAF50;
+      border: none;
+      color: white;
+      font-size: 1rem;
+      font-weight: bold;
+      border-radius: 10px;
+      cursor: pointer;
+      display: none;
+    }
+    .results {
+      margin-top: 20px;
+      font-weight: bold;
+      font-size: 1rem;
+      padding: 10px;
+      background: #fff3cd;
+      border-radius: 10px;
+      max-width: 400px;
+      margin: 0 auto;
+      text-align: left;
+    }
+    footer {
+      margin-top: 40px;
+      padding: 15px;
+      font-size: 0.85rem;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+
+<h1>AfterRoundOne Game 🎯</h1>
+<div id="game-container"></div>
+
+<div class="info-box">
+  <div><strong>Your Stored Number:</strong> <span id="stored-number">?</span></div>
+  <div><strong>Choose Your Number:</strong></div>
+  <div class="number-select" id="number-buttons"></div>
+  <div><strong>Time Left:</strong> <span id="countdown">10</span> seconds</div>
+</div>
+
+<button id="start-round-btn" onclick="startRound()">▶️ Start Next Round</button>
+
+<div class="results" id="results"></div>
+<footer>© 2025 AfterRoundOne — Powered by GJDESIGNHUB 🎉</footer>
+
+<!-- Sound Effects -->
+<audio id="snd-start" src="start.mp3"></audio>
+<audio id="snd-buzzer" src="buzzer.mp3"></audio>
+<audio id="snd-qualify" src="qualify.mp3"></audio>
+<audio id="snd-winner" src="winner.mp3"></audio>
+
+<script>
+  // Firebase setup
+  const firebaseConfig = {
+    apiKey: "AIzaSyD5cQq8BXdPtUsmt8-CMy9zteUD_nofAew",
+    authDomain: "afterroundone-bd680.firebaseapp.com",
+    projectId: "afterroundone-bd680",
+    storageBucket: "afterroundone-bd680.appspot.com",
+    messagingSenderId: "217648545359",
+    appId: "1:217648545359:web:0432b2b4df8c065982743a"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  // Context & state
+  const playerName = localStorage.getItem("playerName") || localStorage.getItem("hostName");
+  const storedNumber = Number(localStorage.getItem("playerNumber") || localStorage.getItem("hostNumber"));
+  const roomCode = localStorage.getItem("roomCode");
+  let isHost = false, timer = null, selected = null;
+  let allPlayers = [];
+
+  // DOM refs
+  const startBtn = document.getElementById("start-round-btn");
+  document.getElementById("stored-number").textContent = storedNumber;
+
+  const sndStart = document.getElementById("snd-start");
+  const sndBuzzer = document.getElementById("snd-buzzer");
+  const sndQualify = document.getElementById("snd-qualify");
+  const sndWinner = document.getElementById("snd-winner");
+
+  // Setup host control
+  db.collection("rooms").doc(roomCode).collection("players").doc(playerName)
+    .get().then(doc => {
+      if (doc.exists && doc.data().isHost) {
+        isHost = true;
+        startBtn.style.display = "inline-block";
+      }
+    });
+
+  // Listen to player list
+  db.collection("rooms").doc(roomCode).collection("players")
+    .onSnapshot(snap => {
+      allPlayers = snap.docs.map(d => d.data());
+      refreshLayout();
+    });
+
+  // Listen to last round
+  db.collection("rooms").doc(roomCode).collection("rounds")
+    .orderBy("timestamp", "desc").limit(1)
+    .onSnapshot(snap => {
+      if (snap.empty) return;
+      const picks = snap.docs[0].data().picks;
+      renderResults(picks);
+    });
+
+  // Update player avatars
+  function refreshLayout() {
+    const container = document.getElementById("game-container");
+    container.innerHTML = "";
+    const live = allPlayers.filter(p => !p.qualified);
+    const others = allPlayers.filter(p => p.qualified);
+    const combined = [...live, ...others];
+    const R = 140, cx = container.clientWidth/2, cy = container.clientHeight/2;
+    combined.forEach((p,i)=>{
+      const a = 2*Math.PI/combined.length * i;
+      const x = cx + R*Math.cos(a) - 40;
+      const y = cy + R*Math.sin(a) - 40;
+      const avatar = document.createElement("div");
+      avatar.className = "player-avatar";
+      avatar.style.left = x+"px"; avatar.style.top = y+"px";
+      avatar.innerHTML = `
+        <div>${p.name.split(' ').map(w=>w[0]).join('').toUpperCase()}</div>
+        <div class="stored-number">#${p.number}</div>
+        <div class="chosen-number" id="chosen-${p.name}"></div>
+      `;
+      container.appendChild(avatar);
+    });
+  }
+
+  // Build pick buttons
+  function buildButtons() {
+    const cont = document.getElementById("number-buttons");
+    cont.innerHTML = "";
+    for(let i=1;i<=5;i++){
+      const b = document.createElement("button");
+      b.className = "num-btn";
+      b.textContent = i;
+      b.onclick = ()=> {
+        selected = i;
+        db.collection("rooms").doc(roomCode)
+          .collection("roundPicks").doc(playerName).set({ number: i });
+        cont.querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+        b.classList.add("active");
+      };
+      cont.appendChild(b);
+    }
+  }
+
+  // Start next round
+  function startRound(){
+    if(!isHost) return;
+    sndStart.play();
+    document.getElementById("results").innerHTML = "";
+    selected = null;
+    buildButtons();
+    let time=10;
+    document.getElementById("countdown").textContent = time;
+    clearInterval(timer);
+    timer = setInterval(()=>{
+      time--;
+      document.getElementById("countdown").textContent = time;
+      if(time <= 0){ clearInterval(timer); sndBuzzer.play(); concludeRound(); }
+    },1000);
+  }
+
+  // Gather picks and publish results
+  function concludeRound(){
+    db.collection("rooms").doc(roomCode).collection("roundPicks")
+      .get().then(s=>{
+        const picks = {}; s.docs.forEach(d=>picks[d.id] = d.data().number);
+        db.collection("rooms").doc(roomCode).collection("rounds")
+          .add({ picks, timestamp: firebase.firestore.FieldValue.serverTimestamp() });
+        s.docs.forEach(d=>d.ref.delete());
+      });
+  }
+
+  // Render, animate, and handle elimination
+  function renderResults(picks){
+    Object.keys(picks).forEach(n=>{
+      const el = document.getElementById(`chosen-${n}`);
+      if(el){
+        el.textContent = picks[n];
+        gsap.fromTo(el, {scale:0},{scale:1.3,duration:0.8});
+      }
+    });
+    const total = Object.values(picks).reduce((a,b)=>a+b,0);
+    const out = document.getElementById("results");
+    out.innerHTML = `🎲 Total Sum: <strong>${total}</strong><br><br>`;
+    const qualifies=[], knocks=[];
+    allPlayers.forEach(p=>{
+      if(p.qualified) return;
+      const pick = picks[p.name];
+      if(pick === total){ qualifies.push(p.name); out.innerHTML += `✅ <strong>${p.name}</strong> qualifies!<br>`; sndQualify.play(); }
+      else { knocks.push(p.name); out.innerHTML += `❌ <strong>${p.name}</strong> knocked out<br>`; }
+    });
+    qualifies.forEach(n=>{ db.collection("rooms").doc(roomCode).collection("players").doc(n).update({ qualified: true }); });
+    const liveLeft = allPlayers.filter(p=> !p.qualified);
+    if(liveLeft.length === 1){
+      const loser = liveLeft[0];
+      db.collection("rooms").doc(roomCode).collection("players").doc(loser.name).delete();
+      out.innerHTML += `💀 <strong>${loser.name}</strong> eliminated!<br>`;
+    }
+    const rem = allPlayers.filter(p=> !p.qualified && p.number!==storedNumber);
+    if(rem.length === 0 && qualifies.length === 1){
+      out.innerHTML += `<br>🏆 <strong>${qualifies[0]}</strong> is the FINAL WINNER! 🎉`;
+      sndWinner.play();
+    }
+    setTimeout(()=>{
+      document.querySelectorAll(".chosen-number").forEach(el=>el.textContent="");
+    },3000);
+  }
+
+  // Initialize
+  buildButtons();
+</script>
+
+</body>
+</html>
